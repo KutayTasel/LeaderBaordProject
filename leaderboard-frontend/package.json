@@ -1,0 +1,39 @@
+{
+  "name": "leaderboard-frontend",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint"
+  },
+  "dependencies": {
+    "@tailwindcss/typography": "^0.5.15",
+    "antd": "^5.21.4",
+    "axios": "^1.7.7",
+    "cssnano": "^7.0.6",
+    "flag-icons": "^7.2.3",
+    "flowbite": "^2.5.2",
+    "flowbite-react": "^0.10.2",
+    "lru-cache": "^11.0.1",
+    "next": "14.2.15",
+    "react": "^18",
+    "react-dnd": "^14.0.0",
+    "react-dnd-html5-backend": "^14.0.0",
+    "react-dom": "^18",
+    "react-toastify": "^10.0.6",
+    "rimraf": "^6.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20",
+    "@types/react": "^18",
+    "@types/react-dom": "^18",
+    "autoprefixer": "^10.4.20",
+    "eslint": "^8",
+    "eslint-config-next": "14.2.15",
+    "postcss": "^8.4.47",
+    "tailwindcss": "^3.4.14",
+    "typescript": "^5"
+  }
+}
