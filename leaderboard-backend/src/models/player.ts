@@ -8,7 +8,6 @@ class Player extends Model {
   public earnings!: number;
 }
 
-// Player modelini tanımlıyoruz
 Player.init(
   {
     id: {
@@ -27,12 +26,12 @@ Player.init(
     earnings: {
       type: DataTypes.FLOAT,
       allowNull: false,
-      defaultValue: 0, // Varsayılan olarak 0 kazanç
+      defaultValue: 0,
     },
   },
   {
-    sequelize, // Bu modelin kullanılacağı veritabanı bağlantısını veriyoruz
-    tableName: "players", // MySQL'deki tablo adı
+    sequelize,
+    tableName: "players",
   }
 );
 
