@@ -1,7 +1,6 @@
 import Player from "../models/player";
-import { redisClient } from "../config/redis"; // Redis bağlantısı burada zaten mevcut
+import { redisClient } from "../config/redis";
 
-// Ülke adlarını ve bunların ISO 3166-1 alpha-2 kodlarını eşleştiren nesne
 const countryCodeMap = {
   "United States": "US",
   "United Kingdom": "GB",
@@ -14,14 +13,12 @@ const countryCodeMap = {
   Australia: "AU",
 };
 
-// Player veri yapısı
 interface PlayerData {
   name: string;
   country: string;
   earnings: number;
 }
 
-// Rastgele isimler oluşturma fonksiyonu
 function generateRandomName(index: number): string {
   const firstNames = [
     "John",
@@ -68,62 +65,59 @@ function generateRandomName(index: number): string {
   return `${firstNames[index % firstNames.length]}_${index}`;
 }
 
-// Rastgele ülke ve kazanç bilgisi oluşturma fonksiyonu
 function getRandomCountryAndEarnings(): { country: string; earnings: number } {
   const countries = Object.keys(countryCodeMap);
   const country = countries[Math.floor(Math.random() * countries.length)];
-  const earnings = Math.floor(Math.random() * 2000) + 500; // 500 ile 2500 arasında kazanç
+  const earnings = Math.floor(Math.random() * 2000) + 500;
   return { country, earnings };
 }
-
 async function seedData() {
   console.log("Mevcut veriler temizleniyor...");
-
-  // MySQL'deki Player tablosunu temizliyoruz
   await Player.destroy({ where: {}, truncate: true });
 
-  // Redis'teki eski liderlik verilerini temizleyelim
   await redisClient.del("weekly_leaderboard");
   await redisClient.del("leaderboard");
 
   const playerCount = 130;
   const players: PlayerData[] = [];
-
-  // 130 oyuncuyu rastgele olarak oluşturuyoruz
   for (let i = 0; i < playerCount; i++) {
     const playerName = generateRandomName(i);
     const { country, earnings } = getRandomCountryAndEarnings();
     players.push({ name: playerName, country, earnings });
   }
 
-  // Oyuncuları hem MySQL veritabanına hem de Redis'e ekliyoruz
-  for (const playerData of players) {
-    try {
-      // Ülke kodunu belirliyoruz
-      const countryCode =
-        countryCodeMap[playerData.country] || playerData.country;
+  await Promise.all(
+    players.map(async (playerData, index) => {
+      try {
+        const countryCode =
+          countryCodeMap[playerData.country] || playerData.country;
+        const player = await Player.create({
+          ...playerData,
+          country: countryCode,
+        });
 
-      // Oyuncuyu MySQL'e ekliyoruz
-      const player = await Player.create({
-        ...playerData,
-        country: countryCode, // Ülke kodunu burada kullanıyoruz
-      });
-      console.log(`Oyuncu eklendi: ${playerData.name} (${playerData.country})`);
+        console.log(
+          `Oyuncu eklendi (${index + 1}/${playerCount}): ${playerData.name} (${
+            playerData.country
+          })`
+        );
+        await redisClient.zAdd("weekly_leaderboard", {
+          score: playerData.earnings,
+          value: player.id.toString(),
+        });
 
-      // Redis'e hem weekly_leaderboard hem de leaderboard'a oyuncunun kazancını ekliyoruz
-      await redisClient.zAdd("weekly_leaderboard", {
-        score: playerData.earnings,
-        value: player.id.toString(), // Oyuncunun ID'sini Redis'e ekliyoruz
-      });
-
-      await redisClient.zAdd("leaderboard", {
-        score: playerData.earnings,
-        value: player.id.toString(), // Oyuncunun ID'sini Redis'e ekliyoruz
-      });
-    } catch (error) {
-      console.error(`Oyuncu eklenirken hata oluştu: ${playerData.name}`, error);
-    }
-  }
+        await redisClient.zAdd("leaderboard", {
+          score: playerData.earnings,
+          value: player.id.toString(),
+        });
+      } catch (error) {
+        console.error(
+          `Oyuncu eklenirken hata oluştu (${index + 1}): ${playerData.name}`,
+          error
+        );
+      }
+    })
+  );
 
   console.log("Seed verileri başarıyla eklendi!");
 }
