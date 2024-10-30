@@ -1,88 +1,153 @@
-import request from "supertest";
-import createApp from "../app"; // Uygulamanızın oluşturulduğu dosya
-import { initRedisConnection, redisClient } from "../config/redis"; // Redis istemcisi ekleniyor
-import { connectToDatabase } from "../config/database";
-import sequelize from "../config/database"; // Sequelize örneği
-import Player from "../models/player"; // Player modelini import et
+import leaderboardService from "../services/leaderboardService";
+import playerRepository from "../repositories/playerRepository";
+import { redisClient } from "../config/redis";
+import Player from "../models/player";
 
-describe("Leaderboard API", () => {
-  let app: ReturnType<typeof createApp>;
+jest.mock("../repositories/playerRepository");
+jest.mock("../config/redis");
+jest.mock("../models/player", () => ({
+  update: jest.fn(),
+}));
 
-  beforeAll(async () => {
-    await connectToDatabase(); // Veritabanı bağlantısını başlat
-    await initRedisConnection(); // Redis bağlantısını başlat
-    app = createApp(); // Uygulamayı oluştur
+describe("LeaderboardService", () => {
+  let player: any;
 
-    // Seed verilerini ekle
-    await seedData(); // Seeding fonksiyonunu çağır
+  beforeEach(() => {
+    player = {
+      id: 1,
+      name: "Player 1",
+      earnings: 100,
+      save: jest.fn(),
+    };
+    (playerRepository.getPlayerById as jest.Mock).mockResolvedValue(player);
+    (redisClient.zIncrBy as jest.Mock).mockResolvedValue(1);
+    (redisClient.incrByFloat as jest.Mock).mockResolvedValue(1);
+    (redisClient.get as jest.Mock).mockResolvedValue("1000");
   });
 
-  afterAll(async () => {
-    // Redis ve veritabanı bağlantılarını kapat
-    await redisClient.quit(); // Redis bağlantısını kapat
-    await sequelize.close(); // MySQL bağlantısını kapat
-  });
+  it("should update player earnings and update Redis", async () => {
+    const earnings = 50;
+    await leaderboardService.updateEarnings(player.id, earnings);
 
-  // Mevcut oyuncu ile test et
-  test("should get player profile", async () => {
-    const response = await request(app).get("/player/1");
-
-    expect(response.status).toBe(200);
-    expect(response.body).toHaveProperty("name");
-    expect(response.body).toHaveProperty("country");
-    expect(response.body).toHaveProperty("earnings");
-    expect(response.body.name).toBe("Kutay"); // Seeding'de tanımlanan oyuncunun adı
-  });
-
-  test("should update player earnings", async () => {
-    const response = await request(app)
-      .post("/update-earnings")
-      .send({ playerId: 1, earnings: 500 });
-
-    expect(response.status).toBe(200);
-    expect(response.body.message).toBe("Earnings updated successfully");
-  });
-
-  test("should get leaderboard for a player", async () => {
-    const response = await request(app).get("/leaderboard/player/1");
-
-    expect(response.status).toBe(200);
-    expect(response.body).toHaveProperty("topPlayers");
-    expect(response.body).toHaveProperty("surroundingPlayers");
-    expect(response.body).toHaveProperty("playerRank");
-  });
-
-  test("should distribute prizes", async () => {
-    const response = await request(app).post("/leaderboard/reset");
-
-    expect(response.status).toBe(200);
-    expect(response.body.message).toBe(
-      "Prizes distributed and leaderboard reset successfully"
+    expect(playerRepository.getPlayerById).toHaveBeenCalledWith(player.id);
+    expect(redisClient.zIncrBy).toHaveBeenCalledWith(
+      "weekly_leaderboard",
+      earnings,
+      player.id.toString()
+    );
+    expect(player.save).toHaveBeenCalled();
+    expect(redisClient.incrByFloat).toHaveBeenCalledWith(
+      "prize_pool",
+      earnings * 0.02
     );
   });
 
-  test("should get prize pool", async () => {
-    const response = await request(app).get("/leaderboard/prizepool");
+  it("should return full leaderboard", async () => {
+    const leaderboard = [{ player, rank: 1 }];
+    const last10Players = [{ player, rank: 11 }];
 
-    expect(response.status).toBe(200);
-    expect(response.body).toHaveProperty("prizePool");
+    jest
+      .spyOn(leaderboardService, "getLast10Players")
+      .mockResolvedValue(last10Players);
+    (playerRepository.getFullLeaderboard as jest.Mock).mockResolvedValue(
+      leaderboard
+    );
+
+    const result = await leaderboardService.getFullLeaderboard();
+
+    expect(result).toEqual([...leaderboard, ...last10Players]);
   });
 
-  // Ek test senaryoları burada...
+  it("should distribute prizes and return the results", async () => {
+    const topPlayersWithScores = [{ player, score: 100 }];
+    (playerRepository.getTopPlayersWithScores as jest.Mock).mockResolvedValue(
+      topPlayersWithScores
+    );
+    (playerRepository.getPrizePool as jest.Mock).mockResolvedValue(500);
+
+    const result = await leaderboardService.distributePrizesAndShowResults(100);
+
+    expect(playerRepository.getTopPlayersWithScores).toHaveBeenCalledWith(100);
+    expect(playerRepository.getPrizePool).toHaveBeenCalled();
+    expect(result.topThree.length).toBeGreaterThan(0);
+  });
+
+  it("should reset player earnings", async () => {
+    await leaderboardService.resetPlayerEarnings();
+
+    expect(Player.update).toHaveBeenCalledWith({ earnings: 0 }, { where: {} });
+  });
+
+  it("should reset leaderboard and prize pool", async () => {
+    await leaderboardService.resetLeaderboardAndPrizePool();
+
+    expect(playerRepository.resetLeaderboardAndPrizePool).toHaveBeenCalled();
+  });
+
+  it("should return the current prize pool", async () => {
+    const prizePool = await leaderboardService.getPrizePool();
+
+    expect(redisClient.get).toHaveBeenCalledWith("prize_pool");
+    expect(prizePool).toBe(1000);
+  });
+
+  it("should assign random earnings to players with zero earnings", async () => {
+    const playersWithZeroEarnings = [player];
+    (
+      playerRepository.getPlayersWithZeroEarnings as jest.Mock
+    ).mockResolvedValue(playersWithZeroEarnings);
+
+    const result = await leaderboardService.assignRandomEarningsToZeroPlayers();
+
+    expect(playerRepository.getPlayersWithZeroEarnings).toHaveBeenCalled();
+    expect(player.save).toHaveBeenCalled();
+    expect(redisClient.zAdd).toHaveBeenCalledWith("weekly_leaderboard", [
+      { score: expect.any(Number), value: player.id.toString() },
+    ]);
+    expect(result.length).toBe(1);
+  });
+
+  it("should return last 10 players from leaderboard", async () => {
+    const allPlayers = [
+      { player, rank: 1 },
+      { player, rank: 2 },
+      { player, rank: 3 },
+    ];
+    (playerRepository.getAllPlayersLeaderboard as jest.Mock).mockResolvedValue(
+      allPlayers
+    );
+
+    const result = await leaderboardService.getLast10Players();
+
+    expect(result).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          player: expect.objectContaining({ id: player.id }),
+          rank: expect.any(Number),
+        }),
+      ])
+    );
+  });
+
+  it("should search players by name and return surrounding players", async () => {
+    const players = [player];
+    (playerRepository.searchPlayersByName as jest.Mock).mockResolvedValue(
+      players
+    );
+    (redisClient.zRevRank as jest.Mock).mockResolvedValue(1);
+    (redisClient.zRange as jest.Mock).mockResolvedValue([1]);
+    (playerRepository.getPlayerById as jest.Mock).mockResolvedValue(player);
+    (redisClient.zScore as jest.Mock).mockResolvedValue(100);
+
+    const result = await leaderboardService.searchPlayers("Player");
+    expect(result).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          player: expect.objectContaining({ id: player.id }),
+          rank: expect.any(Number),
+          score: 100,
+        }),
+      ])
+    );
+  });
 });
-
-// Seeding fonksiyonu
-async function seedData() {
-  await Player.destroy({ where: {}, truncate: true });
-
-  const players = [
-    { name: "Kutay", country: "USA", earnings: 1000 },
-    { name: "Berkay", country: "UK", earnings: 1200 },
-    { name: "Merih", country: "Germany", earnings: 950 },
-    { name: "Furkan", country: "Turkey", earnings: 1100 },
-  ];
-
-  for (const playerData of players) {
-    await Player.create(playerData);
-  }
-}
