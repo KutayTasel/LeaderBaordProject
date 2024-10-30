@@ -162,11 +162,13 @@ const PrizePoolModal: React.FC<PrizePoolModalProps> = ({
                       Others
                     </th>
                     <th className="px-6 py-3 text-left">Total Prize</th>
-                    <th className="px-6 py-3 rounded-tr-lg hidden sm:table-cell text-left">
+                    <th className="px-6 py-3 rounded-tr-lg text-left">
+                      {" "}
                       Total Earnings
                     </th>
                   </tr>
                 </thead>
+
                 <tbody className="text-white">
                   <tr
                     className="bg-gradient-to-r from-gray-600 to-blue-800 hover:bg-blue-600 transition duration-200 ease-in-out"
@@ -178,8 +180,9 @@ const PrizePoolModal: React.FC<PrizePoolModalProps> = ({
                     <td className="px-6 py-4 bg-gray-800 bg-opacity-90">
                       ${prizeDistributionData.others.totalPrize.toFixed(2)}
                     </td>
-                    <td className="px-6 py-4 bg-gray-800 bg-opacity-90 rounded-r-lg hidden sm:table-cell">
-                      ${prizeDistributionData.others.totalEarnings.toFixed(2)}
+                    <td className="px-6 py-4 bg-gray-800 bg-opacity-90 rounded-r-lg">
+                      {" "}
+                      {prizeDistributionData.others.totalEarnings.toFixed(2)}
                     </td>
                   </tr>
                 </tbody>
