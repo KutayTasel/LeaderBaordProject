@@ -8,7 +8,7 @@ const sequelize = new Sequelize(
   process.env.DB_USER || "root",
   process.env.DB_PASSWORD || "",
   {
-    host: process.env.DB_HOST || "51.20.78.86",
+    host: process.env.DB_HOST || "172-31-25-28",
     dialect: "mysql",
     port: Number(process.env.DB_PORT) || 3306,
     logging: false,
