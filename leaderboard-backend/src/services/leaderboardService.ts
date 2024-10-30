@@ -1,4 +1,4 @@
-import playerRepository from "../repositories/playerRepository";
+import playerRepository from "../repositories/playerRepository"; //eklencek
 import { redisClient } from "../config/redis";
 import Player from "../models/player";
 import { calculatePrizes } from "../utils/prizeDistribiton";
