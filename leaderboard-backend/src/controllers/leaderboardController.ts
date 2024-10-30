@@ -1,41 +1,20 @@
 import { Request, Response } from "express";
 import leaderboardService from "../services/leaderboardService";
 import { asyncHandler } from "../utils/asyncHandler";
-import {
-  validateGetLeaderboard,
-  validateSearchPlayers,
-} from "../middlewares/validation";
+import { validateSearchPlayers } from "../middlewares/validation";
+import playerRepository from "../repositories/playerRepository";
 
 class LeaderboardController {
-  getPlayerRank = [
-    validateGetLeaderboard,
-    asyncHandler(async (req: Request, res: Response): Promise<void> => {
-      const { playerId } = req.params;
-      try {
-        const data = await leaderboardService.getPlayerRank(Number(playerId));
-        res.status(200).json(data);
-      } catch (error) {
-        res.status(500).json({
-          message: "Failed to retrieve player rank",
-          error: error instanceof Error ? error.message : String(error),
-        });
-      }
-    }),
-  ];
-
-  // Haftalık ödül havuzunu güncelleyen GET endpoint
   calculateWeeklyPrizePoolGet = asyncHandler(
     async (_req: Request, res: Response): Promise<void> => {
       try {
-        // Haftalık kazançların %2'sini ödül havuzuna ekle ve sonucu al
         const { totalEarnings, prizePoolContribution } =
           await leaderboardService.calculateWeeklyPrizePool();
 
-        // Yanıt olarak toplam kazanç ve katkı miktarını döndür
         res.status(200).json({
           message: "Weekly prize pool updated successfully.",
-          totalEarnings, // %2 alınmadan önceki toplam kazanç
-          prizePoolContribution, // Ödül havuzuna eklenen %2'lik miktar
+          totalEarnings,
+          prizePoolContribution,
         });
       } catch (error) {
         res.status(500).json({
@@ -65,7 +44,6 @@ class LeaderboardController {
     asyncHandler(async (req: Request, res: Response): Promise<void> => {
       const { query } = req.query;
 
-      // query'nin string olup olmadığını kontrol et
       if (typeof query !== "string") {
         res.status(400).json({
           message: "Search query is required and should be a string.",
@@ -90,18 +68,17 @@ class LeaderboardController {
       }
     }),
   ];
-
   distributePrizesAndShowResults = asyncHandler(
     async (_req: Request, res: Response): Promise<void> => {
       try {
-        // Ödülleri dağıt ve kimlere ne kadar ödül verildiğini göster
+        const { prizePoolContribution } =
+          await leaderboardService.calculateWeeklyPrizePool();
         const prizeResults =
-          await leaderboardService.distributePrizesAndShowResults();
-
-        // Ödüller dağıtıldıktan sonra kazançları sıfırla (sadece earnings sıfırlanacak)
+          await leaderboardService.distributePrizesAndShowResults(
+            prizePoolContribution
+          );
         await leaderboardService.resetPlayerEarnings();
 
-        // Yanıtı döndür (kime ne kadar ödül verildiğini göster)
         res.status(200).json(prizeResults);
       } catch (error) {
         res.status(500).json({
@@ -111,38 +88,42 @@ class LeaderboardController {
       }
     }
   );
-
-  // distributePrizesAndShowResults = asyncHandler(
-  //   async (_req: Request, res: Response): Promise<void> => {
-  //     try {
-  //       // Ödülleri dağıt ve kimlere ne kadar ödül verildiğini göster
-  //       const prizeResults =
-  //         await leaderboardService.distributePrizesAndShowResults();
-
-  //       // Yanıtı döndürmeden önce tabloyu sıfırla
-  //       await leaderboardService.resetLeaderboardAndPrizePool();
-
-  //       // Yanıtı döndür (kime ne kadar ödül verildiğini göster)
-  //       res.status(200).json(prizeResults);
-  //     } catch (error) {
-  //       res.status(500).json({
-  //         message: "Failed to distribute prizes and show results.",
-  //         error: error instanceof Error ? error.message : String(error),
-  //       });
-  //     }
-  //   }
-  // );
   getAllPlayersLeaderboard = asyncHandler(
     async (_req: Request, res: Response): Promise<void> => {
       try {
-        // Tüm liderlik tablosundaki oyuncuları getir
-        const leaderboard = await leaderboardService.getAllPlayersLeaderboard();
+        const leaderboard = await playerRepository.getAllPlayersLeaderboard();
         res.status(200).json(leaderboard);
       } catch (error) {
         res.status(500).json({
           message: "Failed to retrieve all players leaderboard",
           error: error instanceof Error ? error.message : String(error),
         });
+      }
+    }
+  );
+  refreshEarnings = asyncHandler(
+    async (_req: Request, res: Response): Promise<void> => {
+      try {
+        const updatedPlayers =
+          await leaderboardService.assignRandomEarningsToZeroPlayers();
+        if (updatedPlayers.length === 0) {
+          res.status(400).json({
+            message:
+              "Failed to assign random earnings. All players had non-zero earnings.",
+          });
+          return;
+        }
+        res.status(200).json({
+          message: "Earnings values updated for players with 0 earnings.",
+          updatedPlayers,
+        });
+        return;
+      } catch (error) {
+        res.status(500).json({
+          message: "Failed to assign random earnings to players.",
+          error: error instanceof Error ? error.message : String(error),
+        });
+        return;
       }
     }
   );
